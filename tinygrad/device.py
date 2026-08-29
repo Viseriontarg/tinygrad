@@ -331,9 +331,9 @@ class TinyELF:
 
   @staticmethod
   def merge_args(signature:tuple[tuple[str|None, int, DType, tuple], ...], bufs, vals) -> list:
-    """interleaves bufs and vals back into parameter order"""
-    bufs, vals = iter(bufs), iter(vals)
-    return [next(vals if shape == () else bufs) for _,_,_,shape in signature]
+    """picks the buf or val of each parameter by slot, an image and a flat view of one buffer share a slot"""
+    bslots, vslots = (sorted({s for _,s,_,shape in signature if (shape == ()) is scalar}) for scalar in (False, True))
+    return [vals[vslots.index(s)] if shape == () else bufs[bslots.index(s)] for _,s,_,shape in signature]
 
   @staticmethod
   def iter_sig(signature:tuple[tuple[str|None, int, DType, tuple], ...], offset:int=0) -> Generator[tuple[int, DType], None, None]:
