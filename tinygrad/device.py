@@ -6,7 +6,7 @@ import importlib, inspect, functools, pathlib, os, contextlib, re, atexit, pickl
 from tinygrad.helpers import LRU, getenv, diskcache_get, diskcache_put, DEBUG, GlobalCounters, PROFILE, temp, colored
 from tinygrad.helpers import Context, CCACHE, ALLOW_DEVICE_USAGE, MAX_BUFFER_SIZE, cpu_events, ProfileEvent, ProfilePointEvent, suppress_finalizing
 from tinygrad.helpers import select_by_name, select_first_inited, DEV, TracingKey, size_to_str, pluralize, Target, unwrap, round_up
-from tinygrad.dtype import DType, _to_np_dtype
+from tinygrad.dtype import DType, dtypes, _to_np_dtype
 if TYPE_CHECKING: from tinygrad.renderer import Renderer
 
 # **************** Device ****************
@@ -325,13 +325,21 @@ class TinyELF:
   lib: bytes
   name: str
   target: Target
-  # tuple of (name, slot, dtype, shape)
+  # tuple of (name, slot, dtype, shape) in parameter order, a scalar arg has shape ()
   signature: tuple[tuple[str|None, int, DType, tuple], ...]
   profile_key: bytes|None = None
 
   @staticmethod
+  def merge_args(signature:tuple[tuple[str|None, int, DType, tuple], ...], bufs, vals) -> list:
+    """interleaves bufs and vals back into parameter order"""
+    bufs, vals = iter(bufs), iter(vals)
+    return [next(vals if shape == () else bufs) for _,_,_,shape in signature]
+
+  @staticmethod
   def iter_sig(signature:tuple[tuple[str|None, int, DType, tuple], ...], offset:int=0) -> Generator[tuple[int, DType], None, None]:
-    for _,_,dt,_ in signature:
+    """yields the naturally aligned (offset, dtype) of each parameter, buffers are 8 byte pointers"""
+    for _,_,dt,shape in signature:
+      if shape != (): dt = dtypes.uint64
       yield (offset:=round_up(offset, dt.itemsize)), dt
       offset += dt.itemsize
 

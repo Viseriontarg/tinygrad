@@ -1214,8 +1214,8 @@ class UOp(RandMixin, metaclass=UOpMetaClass):
 
   def to_elf(self) -> TinyELF:
     assert self.op is Ops.PROGRAM and isinstance(self.arg, ProgramInfo), "to_elf should only be called on a PROGRAM ast"
-    sig = tuple((u.arg.name, u.arg.slot, u.dtype, u._shape)
-                for u in tuple(filter(lambda u: u.op is Ops.PARAM and u.addrspace != AddrSpace.ALU, self.src[1].src)) + self.arg.vars)
+    params = sorted((u for u in self.src[0].toposort() if u.op is Ops.PARAM), key=lambda u: u.arg.slot)
+    sig = tuple((u.arg.name, u.arg.slot, u.arg.dtype, u._shape) for u in params)
     return TinyELF(self.src[3].arg, self.arg.function_name, self.arg.target, sig, self.key)
 
 @dataclass(frozen=True)
@@ -1236,9 +1236,9 @@ class ProgramInfo:
   global_size: tuple[int|float, ...] = (1, 1, 1)
   local_size: tuple[int, ...]|None = None
   vars: tuple[UOp, ...] = ()
-  globals: tuple[int, ...] = ()
-  outs: tuple[int, ...] = ()
-  ins: tuple[int, ...] = ()
+  globals: tuple[int, ...] = ()  # slots of the buffer params, the call args are these buffers in slot order
+  outs: tuple[int, ...] = ()     # call args the kernel stores to
+  ins: tuple[int, ...] = ()      # call args the kernel loads from
   target: Target = Target()
 
   @property
@@ -1275,9 +1275,10 @@ class ProgramInfo:
         special_size = local_size if u.arg[0] == 'l' else global_size
         if special_size is not None: special_size[int(u.arg[-1])] = cast(int, u.src[0].ssimplify())
       if u.op is Ops.PARAM and u in _vars and u.expr == 'core_id': global_size[0] = int(u.vmax) + 1
+    glbls = tuple(sorted(dedup(_globals)))
     return ProgramInfo(sink.arg.name if isinstance(sink.arg, KernelInfo) else "test", tuple(global_size),
                        tuple(local_size) if local_size is not None else None, tuple(sorted(dedup(_vars), key=lambda v: v.arg.slot)),
-                       tuple(sorted(dedup(_globals))), tuple(sorted(dedup(outs))), tuple(sorted(dedup(ins))), target)
+                       glbls, tuple(sorted({glbls.index(s) for s in outs})), tuple(sorted({glbls.index(s) for s in ins})), target)
 
 @dataclass(frozen=True)
 class CallInfo:
