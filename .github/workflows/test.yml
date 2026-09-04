@@ -1,0 +1,74 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [master]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get -y --no-install-recommends install cmake ninja-build libfl-dev
+      - name: Install macOS deps
+        if: runner.os == 'macOS'
+        run: brew install flex bison boost
+      - uses: actions/checkout@v6
+        if: runner.os == 'Linux'
+        with:
+          repository: boostorg/boost
+          path: boost
+          ref: boost-1.90.0
+      - name: Build Boost (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd ${{ github.workspace }}/boost
+          git submodule update --depth 1 --init tools/boostdep libs/filesystem libs/thread libs/random libs/asio
+          python tools/boostdep/depinst/depinst.py -X test -g "--depth 1" filesystem
+          python tools/boostdep/depinst/depinst.py -X test -g "--depth 1" thread
+          python tools/boostdep/depinst/depinst.py -X test -g "--depth 1" random
+          python tools/boostdep/depinst/depinst.py -X test -g "--depth 1" asio
+          ./bootstrap.sh --prefix=${{ github.workspace }}/boost-fpic
+          ./b2 install link=static runtime-link=shared threading=multi variant=release cxxflags=-fPIC
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: cmake -S ocelot -B ocelot/build -G Ninja -DBUILD_TESTS=ON -DBUILD_TESTS_CUDA=OFF -DBOOST_ROOT=${{ github.workspace }}/boost-fpic
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
+        run: cmake -S ocelot -B ocelot/build -G Ninja -DBUILD_TESTS=ON -DBUILD_TESTS_CUDA=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      - name: Build
+        run: cmake --build ocelot/build
+      - name: Test
+        run: ctest --test-dir ocelot/build --output-on-failure
+      - uses: actions/upload-artifact@v7
+        with:
+          name: libgpuocelot-${{ runner.os }}
+          path: ocelot/build/libgpuocelot.${{ runner.os == 'Linux' && 'so' || 'dylib' }}
+
+  release:
+    needs: test
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME"
