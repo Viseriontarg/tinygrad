@@ -598,6 +598,9 @@ jobs:
         uses: ./.github/actions/process-replay
 
   testnvidia:
+    permissions:
+      actions: read
+      contents: read
     strategy:
       fail-fast: false
       matrix:

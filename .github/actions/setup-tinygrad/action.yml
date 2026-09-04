@@ -273,7 +273,8 @@ runs:
       shell: bash
       run: |
         sudo mkdir -p /usr/local/lib
-        sudo curl --output-dir /usr/local/lib -fLO https://github.com/tinygrad/gpuocelot/releases/download/v0.1.0/libgpuocelot.${{ runner.os == 'Linux' && 'so' || 'dylib' }}
+        gh run download 33929415380 --repo Viseriontarg/tinygrad --name libgpuocelot-${{ runner.os }} --dir "$RUNNER_TEMP/gpuocelot"
+        sudo install "$RUNNER_TEMP/gpuocelot/libgpuocelot.${{ runner.os == 'Linux' && 'so' || 'dylib' }}" /usr/local/lib/
 
     # **** WebGPU ****
 

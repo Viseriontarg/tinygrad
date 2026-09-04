@@ -52,6 +52,9 @@ jobs:
       uses: ./.github/actions/process-replay
 
   unittestmacosmock:
+    permissions:
+      actions: read
+      contents: read
     name: MacOS (unit, mock)
     runs-on: macos-26
     timeout-minutes: 20
