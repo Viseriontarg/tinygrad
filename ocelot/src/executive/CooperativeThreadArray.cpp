@@ -1875,8 +1875,9 @@ void executive::CooperativeThreadArray::eval_F16(CTAContext &context,
 					}
 					break;
 				}
-				case ir::PTXInstruction::Min: value = std::fmin(a, b); break;
-				case ir::PTXInstruction::Max: value = std::fmax(a, b); break;
+				// PTX orders +0 above -0.
+				case ir::PTXInstruction::Min: value = a == b ? (std::signbit(a) ? a : b) : std::fmin(a, b); break;
+				case ir::PTXInstruction::Max: value = a == b ? (std::signbit(a) ? b : a) : std::fmax(a, b); break;
 				case ir::PTXInstruction::Ex2: value = std::exp2(a); break;
 				default: throw RuntimeException("unsupported half instruction", context.PC, instr);
 			}
